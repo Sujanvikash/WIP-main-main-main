@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import {
   Trash2,
   Printer,
@@ -489,29 +489,32 @@ Digital Atelier`);
   };
 
   // Build preview quote object
-  const buildPreviewQuote = () => ({
-    quoteId: formData.quoteId,
-    presetKey,
-    recipientName: formData.recipientName,
-    recipientEmail: formData.recipientEmail,
-    recipientPhone: formData.recipientPhone,
-    propertyType: formData.propertyType,
-    sizeRange: formData.sizeRange,
-    validityDays: Number(formData.validityDays) || 30,
-    scopeItems: formData.scopeItems,
-    inclusions: formData.inclusions,
-    exclusions: formData.exclusions,
-    categoryInclusions: formData.categoryInclusions,
-    categoryExclusions: formData.categoryExclusions,
-    addedInclusions: formData.addedInclusions,
-    addedExclusions: formData.addedExclusions,
-    notes: formData.notes,
-    createdAt: formData.createdAt,
-    subtotal: totals.subtotal,
-    gst: totals.gst,
-    grandTotal: totals.grandTotal,
-    isSampleQuote: true,
-  });
+  const buildPreviewQuote = useCallback(
+    () => ({
+      quoteId: formData.quoteId,
+      presetKey,
+      recipientName: formData.recipientName,
+      recipientEmail: formData.recipientEmail,
+      recipientPhone: formData.recipientPhone,
+      propertyType: formData.propertyType,
+      sizeRange: formData.sizeRange,
+      validityDays: Number(formData.validityDays) || 30,
+      scopeItems: formData.scopeItems,
+      inclusions: formData.inclusions,
+      exclusions: formData.exclusions,
+      categoryInclusions: formData.categoryInclusions,
+      categoryExclusions: formData.categoryExclusions,
+      addedInclusions: formData.addedInclusions,
+      addedExclusions: formData.addedExclusions,
+      notes: formData.notes,
+      createdAt: formData.createdAt,
+      subtotal: totals.subtotal,
+      gst: totals.gst,
+      grandTotal: totals.grandTotal,
+      isSampleQuote: true,
+    }),
+    [formData, presetKey, totals],
+  );
 
   const handlePrint = async () => {
     try {
@@ -570,7 +573,7 @@ Digital Atelier`);
     }
   };
 
-  const previewQuote = buildPreviewQuote();
+  const previewQuote = useMemo(() => buildPreviewQuote(), [buildPreviewQuote]);
 
   const handleSendEmailSubmit = async (e) => {
     e.preventDefault();
@@ -641,10 +644,11 @@ Digital Atelier`);
       footer={footer}
       maxWidth="max-w-[1100px]"
       maxHeight="max-h-[95vh]"
+      bodyClassName="lg:overflow-hidden overflow-y-auto px-8 py-6 flex flex-col lg:h-full min-h-0"
     >
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-6 lg:h-full lg:min-h-0 lg:overflow-hidden">
         {/* ── Form pane ── */}
-        <div className="modal-no-print">
+        <div className="modal-no-print lg:overflow-y-auto lg:h-full lg:min-h-0 scroll-hidden-bar">
           {/* Property Preset (read-only display) */}
           <div className="mb-5">
             <SectionHeader>Property Preset</SectionHeader>
@@ -724,7 +728,9 @@ Digital Atelier`);
                     <button
                       type="button"
                       onClick={() => toggleGroup(group.room)}
-                      className="w-full flex items-center justify-between px-3.5 py-2.5 bg-bg-soft/40 hover:bg-bg-soft/70 transition-colors cursor-pointer border-b border-bordergray"
+                      className={`w-full flex items-center justify-between px-3.5 py-2.5 bg-bg-soft/40 hover:bg-bg-soft/70 transition-colors cursor-pointer ${
+                        groupOpen ? "border-b border-bordergray" : ""
+                      }`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         {groupOpen ? (
@@ -1051,7 +1057,7 @@ Digital Atelier`);
         </div>
 
         {/* ── Preview pane ── */}
-        <div className="lg:sticky lg:top-0 lg:self-start">
+        <div className="lg:overflow-y-auto lg:h-full lg:min-h-0 scroll-hidden-bar">
           <p className="text-[10px] uppercase tracking-widest text-text-subtle font-bold mb-2 modal-no-print">
             Live Preview
           </p>

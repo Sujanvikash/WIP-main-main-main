@@ -10,7 +10,16 @@ import { HiMiniXMark } from "react-icons/hi2";
  *   footer      — ReactNode pinned to the bottom (buttons go here)
  *   maxWidth    — Tailwind max-w class, default "max-w-[660px]"
  */
-const Modal = ({ title, subtitle, onClose, children, footer, maxWidth = "max-w-[660px]", maxHeight = "max-h-[90vh]" }) => {
+const Modal = ({
+  title,
+  subtitle,
+  onClose,
+  children,
+  footer,
+  maxWidth = "max-w-[660px]",
+  maxHeight = "max-h-[90vh]",
+  bodyClassName = "overflow-y-auto px-8 py-6"
+}) => {
   useEffect(() => {
     const handleKey = (e) => {
       if (e.key === "Escape") onClose?.();
@@ -53,7 +62,7 @@ const Modal = ({ title, subtitle, onClose, children, footer, maxWidth = "max-w-[
         </div>
 
         {/* Body — scrollable */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-8 py-6">
+        <div className={`flex-1 min-h-0 ${bodyClassName}`}>
           {children}
         </div>
 
