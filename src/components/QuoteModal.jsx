@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
@@ -51,7 +51,10 @@ import {
   getConfigForType,
   getPropertyTypesForPreset,
 } from "../data/QuotePresets";
-import { computeLibraryItemAmount, computeLibraryItemArea } from "../data/itemLibrary";
+import {
+  computeLibraryItemAmount,
+  computeLibraryItemArea,
+} from "../data/itemLibrary";
 import { formatAmount } from "../utils/formatAmount";
 import { assignCategoryNames } from "../utils/scopeNaming";
 import { roomColor } from "../data/categoryColors";
@@ -119,14 +122,21 @@ const MultiSelectDropdown = ({
   const inputRef = useRef(null);
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
 
+  const lastCoordsRef = useRef({ top: 0, left: 0, width: 0 });
+
   const updateCoords = () => {
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
-      setCoords({
+      const next = {
         top: rect.bottom + window.scrollY,
         left: rect.left + window.scrollX,
         width: rect.width,
-      });
+      };
+      const prev = lastCoordsRef.current;
+      if (prev.top !== next.top || prev.left !== next.left || prev.width !== next.width) {
+        lastCoordsRef.current = next;
+        setCoords(next);
+      }
     }
   };
 
@@ -149,13 +159,25 @@ const MultiSelectDropdown = ({
   useEffect(() => {
     if (open) {
       updateCoords();
-      window.addEventListener("resize", updateCoords);
-      window.addEventListener("scroll", updateCoords, true);
+      let frameId = null;
+      const onScrollResize = () => {
+        if (!frameId) {
+          frameId = requestAnimationFrame(() => {
+            updateCoords();
+            frameId = null;
+          });
+        }
+      };
+      window.addEventListener("resize", onScrollResize);
+      window.addEventListener("scroll", onScrollResize, true);
+      return () => {
+        window.removeEventListener("resize", onScrollResize);
+        window.removeEventListener("scroll", onScrollResize, true);
+        if (frameId) {
+          cancelAnimationFrame(frameId);
+        }
+      };
     }
-    return () => {
-      window.removeEventListener("resize", updateCoords);
-      window.removeEventListener("scroll", updateCoords, true);
-    };
   }, [open]);
 
   // Auto-focus the input when dropdown opens
@@ -353,24 +375,38 @@ const buildInitialFormData = ({
   const categoryExclusions = {};
   const addedInclusions = {};
   const addedExclusions = {};
-  const categoriesList = ["STATUATORY", "DELIVERY", "PAYMENTS", "TECHNICAL", "GENERAL"];
+  const categoriesList = [
+    "STATUATORY",
+    "DELIVERY",
+    "PAYMENTS",
+    "TECHNICAL",
+    "GENERAL",
+  ];
 
   categoriesList.forEach((cat) => {
     const global = getGlobalTerms(cat);
-    const defaultIn = global.inclusions.filter((t) => t.isDefault).map((t) => t.text);
-    const defaultEx = global.exclusions.filter((t) => t.isDefault).map((t) => t.text);
+    const defaultIn = global.inclusions
+      .filter((t) => t.isDefault)
+      .map((t) => t.text);
+    const defaultEx = global.exclusions
+      .filter((t) => t.isDefault)
+      .map((t) => t.text);
 
     if (initialQuote?.categoryInclusions?.[cat]) {
       categoryInclusions[cat] = [...initialQuote.categoryInclusions[cat]];
     } else {
       if (initialQuote?.inclusions) {
         const catGlobalIntexts = global.inclusions.map((t) => t.text);
-        categoryInclusions[cat] = initialQuote.inclusions.filter((text) => catGlobalIntexts.includes(text));
+        categoryInclusions[cat] = initialQuote.inclusions.filter((text) =>
+          catGlobalIntexts.includes(text),
+        );
       } else if (presetData?.categoryInclusions?.[cat]) {
         categoryInclusions[cat] = [...presetData.categoryInclusions[cat]];
       } else if (presetData?.inclusions) {
         const catGlobalIntexts = global.inclusions.map((t) => t.text);
-        categoryInclusions[cat] = presetData.inclusions.filter((text) => catGlobalIntexts.includes(text));
+        categoryInclusions[cat] = presetData.inclusions.filter((text) =>
+          catGlobalIntexts.includes(text),
+        );
       } else {
         categoryInclusions[cat] = defaultIn;
       }
@@ -381,12 +417,16 @@ const buildInitialFormData = ({
     } else {
       if (initialQuote?.exclusions) {
         const catGlobalExtexts = global.exclusions.map((t) => t.text);
-        categoryExclusions[cat] = initialQuote.exclusions.filter((text) => catGlobalExtexts.includes(text));
+        categoryExclusions[cat] = initialQuote.exclusions.filter((text) =>
+          catGlobalExtexts.includes(text),
+        );
       } else if (presetData?.categoryExclusions?.[cat]) {
         categoryExclusions[cat] = [...presetData.categoryExclusions[cat]];
       } else if (presetData?.exclusions) {
         const catGlobalExtexts = global.exclusions.map((t) => t.text);
-        categoryExclusions[cat] = presetData.exclusions.filter((text) => catGlobalExtexts.includes(text));
+        categoryExclusions[cat] = presetData.exclusions.filter((text) =>
+          catGlobalExtexts.includes(text),
+        );
       } else {
         categoryExclusions[cat] = defaultEx;
       }
@@ -399,7 +439,9 @@ const buildInitialFormData = ({
       addedInclusions[cat] = [...presetData.addedInclusions[cat]];
     } else {
       const currentIn = categoryInclusions[cat] || [];
-      addedInclusions[cat] = currentIn.filter((item) => !defaultIn.includes(item));
+      addedInclusions[cat] = currentIn.filter(
+        (item) => !defaultIn.includes(item),
+      );
     }
 
     if (initialQuote?.addedExclusions?.[cat]) {
@@ -408,7 +450,9 @@ const buildInitialFormData = ({
       addedExclusions[cat] = [...presetData.addedExclusions[cat]];
     } else {
       const currentEx = categoryExclusions[cat] || [];
-      addedExclusions[cat] = currentEx.filter((item) => !defaultEx.includes(item));
+      addedExclusions[cat] = currentEx.filter(
+        (item) => !defaultEx.includes(item),
+      );
     }
   });
 
@@ -564,16 +608,26 @@ const QuoteModal = ({
     setPresetKey(key);
     const cfg = getConfigForType(key);
     if (!cfg) return;
-    
+
     const categoryInclusions = {};
     const categoryExclusions = {};
     const addedInclusions = {};
     const addedExclusions = {};
-    const categoriesList = ["STATUATORY", "DELIVERY", "PAYMENTS", "TECHNICAL", "GENERAL"];
+    const categoriesList = [
+      "STATUATORY",
+      "DELIVERY",
+      "PAYMENTS",
+      "TECHNICAL",
+      "GENERAL",
+    ];
     categoriesList.forEach((cat) => {
       const global = getGlobalTerms(cat);
-      categoryInclusions[cat] = global.inclusions.filter((t) => t.isDefault).map((t) => t.text);
-      categoryExclusions[cat] = global.exclusions.filter((t) => t.isDefault).map((t) => t.text);
+      categoryInclusions[cat] = global.inclusions
+        .filter((t) => t.isDefault)
+        .map((t) => t.text);
+      categoryExclusions[cat] = global.exclusions
+        .filter((t) => t.isDefault)
+        .map((t) => t.text);
       addedInclusions[cat] = [];
       addedExclusions[cat] = [];
     });
@@ -617,11 +671,21 @@ const QuoteModal = ({
     const categoryExclusions = {};
     const addedInclusions = {};
     const addedExclusions = {};
-    const categoriesList = ["STATUATORY", "DELIVERY", "PAYMENTS", "TECHNICAL", "GENERAL"];
+    const categoriesList = [
+      "STATUATORY",
+      "DELIVERY",
+      "PAYMENTS",
+      "TECHNICAL",
+      "GENERAL",
+    ];
     categoriesList.forEach((cat) => {
       const global = getGlobalTerms(cat);
-      categoryInclusions[cat] = global.inclusions.filter((t) => t.isDefault).map((t) => t.text);
-      categoryExclusions[cat] = global.exclusions.filter((t) => t.isDefault).map((t) => t.text);
+      categoryInclusions[cat] = global.inclusions
+        .filter((t) => t.isDefault)
+        .map((t) => t.text);
+      categoryExclusions[cat] = global.exclusions
+        .filter((t) => t.isDefault)
+        .map((t) => t.text);
       addedInclusions[cat] = [];
       addedExclusions[cat] = [];
     });
@@ -668,7 +732,13 @@ const QuoteModal = ({
   };
 
   const toggleInclusion = (item, forcedCat = null) => {
-    const categoriesList = ["STATUATORY", "DELIVERY", "PAYMENTS", "TECHNICAL", "GENERAL"];
+    const categoriesList = [
+      "STATUATORY",
+      "DELIVERY",
+      "PAYMENTS",
+      "TECHNICAL",
+      "GENERAL",
+    ];
     let foundCat = forcedCat;
     if (!foundCat) {
       foundCat = "GENERAL";
@@ -706,7 +776,13 @@ const QuoteModal = ({
   };
 
   const toggleExclusion = (item, forcedCat = null) => {
-    const categoriesList = ["STATUATORY", "DELIVERY", "PAYMENTS", "TECHNICAL", "GENERAL"];
+    const categoriesList = [
+      "STATUATORY",
+      "DELIVERY",
+      "PAYMENTS",
+      "TECHNICAL",
+      "GENERAL",
+    ];
     let foundCat = forcedCat;
     if (!foundCat) {
       foundCat = "GENERAL";
@@ -747,20 +823,25 @@ const QuoteModal = ({
     setFormData((p) => {
       const nextItems = p.scopeItems.map((s, i) => {
         if (i !== idx) return s;
-        
+
         let target = { ...s, [key]: value };
-        
-        if (key === "length" || key === "breadth" || key === "qty" || key === "rate") {
+
+        if (
+          key === "length" ||
+          key === "breadth" ||
+          key === "qty" ||
+          key === "rate"
+        ) {
           const L = Number(target.length) || 0;
           const B = Number(target.breadth) || 0;
           target.calculatedArea = L * B;
-          
+
           const userQty = target.qty !== "" ? Number(target.qty) : 0;
           const qtyToUse = userQty > 0 ? userQty : target.calculatedArea;
           const rateToUse = Number(target.rate) || 0;
           target.amount = Math.round(qtyToUse * rateToUse);
         }
-        
+
         return target;
       });
       return { ...p, scopeItems: nextItems };
@@ -833,32 +914,36 @@ const QuoteModal = ({
     }));
   };
 
-  const buildQuote = (overrides = {}) => ({
-    quoteId: formData.quoteId,
-    parentId,
-    parentType,
-    presetKey,
-    recipientName: formData.recipientName,
-    recipientEmail: formData.recipientEmail,
-    recipientPhone: formData.recipientPhone,
-    propertyType: formData.propertyType,
-    sizeRange: formData.sizeRange,
-    validityDays: Number(formData.validityDays) || 30,
-    scopeItems: formData.scopeItems,
-    inclusions: formData.inclusions,
-    exclusions: formData.exclusions,
-    categoryInclusions: formData.categoryInclusions,
-    categoryExclusions: formData.categoryExclusions,
-    addedInclusions: formData.addedInclusions,
-    addedExclusions: formData.addedExclusions,
-    notes: formData.notes,
-    createdAt: formData.createdAt,
-    subtotal: totals.subtotal,
-    gst: totals.gst,
-    grandTotal: totals.grandTotal,
-    status: "draft",
-    ...overrides,
-  });
+  const buildQuote = useCallback(
+    (overrides = {}) => ({
+      quoteId: formData.quoteId,
+      parentId,
+      parentType,
+      presetKey,
+      recipientName: formData.recipientName,
+      recipientEmail: formData.recipientEmail,
+      recipientPhone: formData.recipientPhone,
+      propertyType: formData.propertyType,
+      sizeRange: formData.sizeRange,
+      validityDays: Number(formData.validityDays) || 30,
+      scopeItems: formData.scopeItems,
+      inclusions: formData.inclusions,
+      exclusions: formData.exclusions,
+      categoryInclusions: formData.categoryInclusions,
+      categoryExclusions: formData.categoryExclusions,
+      addedInclusions: formData.addedInclusions,
+      addedExclusions: formData.addedExclusions,
+      notes: formData.notes,
+      createdAt: formData.createdAt,
+      subtotal: totals.subtotal,
+      gst: totals.gst,
+      grandTotal: totals.grandTotal,
+      status: "draft",
+      isSampleQuote: true,
+      ...overrides,
+    }),
+    [formData, parentId, parentType, presetKey, totals],
+  );
 
   const handleSaveDraft = () => {
     if (!parentId) return;
@@ -873,7 +958,9 @@ const QuoteModal = ({
       const { flushSync } = await import("react-dom");
 
       // 1. Create a temporary container directly on body
-      let printContainer = document.getElementById("quote-print-temp-container");
+      let printContainer = document.getElementById(
+        "quote-print-temp-container",
+      );
       if (!printContainer) {
         printContainer = document.createElement("div");
         printContainer.id = "quote-print-temp-container";
@@ -894,7 +981,7 @@ const QuoteModal = ({
       const cleanup = () => {
         if (cleaned) return;
         cleaned = true;
-        
+
         try {
           document.body.classList.remove("printing-quote-mode");
         } catch (e) {}
@@ -918,7 +1005,10 @@ const QuoteModal = ({
       // 6. Synchronous fallback: run cleanup immediately after print dialog returns (blocking call)
       cleanup();
     } catch (err) {
-      console.error("[QuoteModal] print failed, falling back to basic print:", err);
+      console.error(
+        "[QuoteModal] print failed, falling back to basic print:",
+        err,
+      );
       window.print();
     }
   };
@@ -957,7 +1047,7 @@ const QuoteModal = ({
     onClose?.();
   };
 
-  const previewQuote = buildQuote();
+  const previewQuote = useMemo(() => buildQuote(), [buildQuote]);
 
   const footer = (
     <div className="flex flex-wrap justify-between items-center gap-3 modal-no-print">
@@ -1035,10 +1125,11 @@ const QuoteModal = ({
       footer={footer}
       maxWidth="max-w-[1100px]"
       maxHeight="max-h-[95vh]"
+      bodyClassName="lg:overflow-hidden overflow-y-auto px-8 py-6 flex flex-col lg:h-full min-h-0"
     >
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-6 lg:h-full lg:min-h-0 lg:overflow-hidden">
         {/* Form pane */}
-        <div className="modal-no-print">
+        <div className="modal-no-print lg:overflow-y-auto lg:h-full lg:min-h-0 scroll-hidden-bar">
           {/* Preset is editable in standalone Quote mode but locked in
               Proposal mode (it was chosen during inquiry creation). */}
           {isProposal ? (
@@ -1082,11 +1173,29 @@ const QuoteModal = ({
 
           <div className="border-t border-border my-5" />
 
-          {/* Recipient — proposal mode shows just the email; the standalone
-              Quote mode keeps the full name/phone/email block. */}
+          {/* Recipient — proposal mode shows the full client details (name, phone) read-only
+              as in SampleQuoteModal, while keeping the email input editable to support workflow. */}
           {isProposal ? (
             <div className="mb-5">
-              <SectionHeader>Recipient Email</SectionHeader>
+              <SectionHeader>Client Details</SectionHeader>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="rounded-lg border border-bordergray bg-bg-soft px-3 py-2">
+                  <p className="text-[9px] font-bold uppercase text-text-subtle tracking-wider mb-0.5">
+                    Name
+                  </p>
+                  <p className="text-[12px] font-semibold text-textcolor">
+                    {formData.recipientName || "—"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-bordergray bg-bg-soft px-3 py-2">
+                  <p className="text-[9px] font-bold uppercase text-text-subtle tracking-wider mb-0.5">
+                    Phone
+                  </p>
+                  <p className="text-[12px] font-semibold text-textcolor">
+                    {formData.recipientPhone || "—"}
+                  </p>
+                </div>
+              </div>
               <InputField
                 name="recipientEmail"
                 label="Email"
@@ -1097,7 +1206,7 @@ const QuoteModal = ({
                 placeholder="example@domain.com"
               />
               <p className="mt-2 text-[10px] text-text-muted">
-                Sample quotation will be sent to this address.
+                Proposal quotation will be sent to this address.
               </p>
             </div>
           ) : (
@@ -1203,20 +1312,33 @@ const QuoteModal = ({
                 const roomColorObj = roomColor(group.room.split(" ")[0]);
                 const groupOpen = isGroupOpen(group.room);
                 return (
-                  <div key={group.room} className="border border-bordergray rounded-xl bg-white overflow-hidden shadow-sm">
+                  <div
+                    key={group.room}
+                    className="border border-bordergray rounded-xl bg-white overflow-hidden shadow-sm"
+                  >
                     {/* Accordion Header */}
                     <button
                       type="button"
                       onClick={() => toggleGroup(group.room)}
-                      className="w-full flex items-center justify-between px-3.5 py-2.5 bg-bg-soft/40 hover:bg-bg-soft/70 transition-colors cursor-pointer border-b border-bordergray"
+                      className={`w-full flex items-center justify-between px-3.5 py-2.5 bg-bg-soft/40 hover:bg-bg-soft/70 transition-colors cursor-pointer ${
+                        groupOpen ? "border-b border-bordergray" : ""
+                      }`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         {groupOpen ? (
-                          <ChevronDown size={13} className="text-text-muted shrink-0" />
+                          <ChevronDown
+                            size={13}
+                            className="text-text-muted shrink-0"
+                          />
                         ) : (
-                          <ChevronRight size={13} className="text-text-muted shrink-0" />
+                          <ChevronRight
+                            size={13}
+                            className="text-text-muted shrink-0"
+                          />
                         )}
-                        <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${roomColorObj.dot}`} />
+                        <span
+                          className={`h-2.5 w-2.5 rounded-full shrink-0 ${roomColorObj.dot}`}
+                        />
                         <h4 className="text-[12px] font-bold text-textcolor uppercase tracking-wide truncate">
                           {group.room}
                         </h4>
@@ -1251,7 +1373,11 @@ const QuoteModal = ({
                                 type="text"
                                 value={item.description}
                                 onChange={(e) =>
-                                  updateScope(idx, "description", e.target.value)
+                                  updateScope(
+                                    idx,
+                                    "description",
+                                    e.target.value,
+                                  )
                                 }
                                 placeholder="Description"
                                 className="bg-white border border-bordergray text-[11px] text-darkgray rounded-md px-2 py-2 w-full focus:outline-none focus:border-gray-300 focus:ring-1 focus:ring-gray-300"
@@ -1275,68 +1401,7 @@ const QuoteModal = ({
                               </button>
                             </div>
 
-                            {/* Dimensions row */}
-                            <div className="grid grid-cols-6 gap-2 pt-1 border-t border-dashed border-bordergray">
-                              <div>
-                                <label className="block text-[9px] font-bold text-text-muted  mb-0.5">L (ft)</label>
-                                <input
-                                  type="number"
-                                  placeholder="0.0"
-                                  value={item.length ?? ""}
-                                  onChange={(e) => updateScope(idx, "length", e.target.value)}
-                                  className="bg-white border border-bordergray text-[11px] text-darkgray rounded-md px-2 py-1.5 w-full focus:outline-none focus:border-gray-300 focus:ring-1 focus:ring-gray-300"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-[9px] font-bold text-text-muted  mb-0.5">D (ft)</label>
-                                <input
-                                  type="number"
-                                  placeholder="0.0"
-                                  value={item.breadth ?? ""}
-                                  onChange={(e) => updateScope(idx, "breadth", e.target.value)}
-                                  className="bg-white border border-bordergray text-[11px] text-darkgray rounded-md px-2 py-1.5 w-full focus:outline-none focus:border-gray-300 focus:ring-1 focus:ring-gray-300"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-[9px] font-bold text-text-muted  mb-0.5">H (ft)</label>
-                                <input
-                                  type="number"
-                                  placeholder="0.0"
-                                  value={item.height ?? ""}
-                                  onChange={(e) => updateScope(idx, "height", e.target.value)}
-                                  className="bg-white border border-bordergray text-[11px] text-darkgray rounded-md px-2 py-1.5 w-full focus:outline-none focus:border-gray-300 focus:ring-1 focus:ring-gray-300"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-[9px] font-bold text-text-muted mb-0.5">AREA</label>
-                                <input
-                                  type="text"
-                                  readOnly
-                                  value={item.calculatedArea ? Number(item.calculatedArea).toFixed(2) : "0.00"}
-                                  className="bg-bg-soft border border-bordergray text-[11px] text-text-muted rounded-md px-2 py-1.5 w-full cursor-not-allowed focus:outline-none"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-[9px] font-bold text-text-muted uppercase mb-0.5">QTY</label>
-                                <input
-                                  type="number"
-                                  placeholder="Use Area"
-                                  value={item.qty ?? ""}
-                                  onChange={(e) => updateScope(idx, "qty", e.target.value)}
-                                  className="bg-white border border-bordergray text-[11px] text-darkgray rounded-md px-2 py-1.5 w-full focus:outline-none focus:border-gray-300 focus:ring-1 focus:ring-gray-300"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-[9px] font-bold text-text-muted uppercase mb-0.5">RATE ₹</label>
-                                <input
-                                  type="number"
-                                  placeholder="Rate"
-                                  value={item.rate ?? ""}
-                                  onChange={(e) => updateScope(idx, "rate", e.target.value)}
-                                  className="bg-white border border-bordergray text-[11px] text-darkgray rounded-md px-2 py-1.5 w-full focus:outline-none focus:border-gray-300 focus:ring-1 focus:ring-gray-300 text-right"
-                                />
-                              </div>
-                            </div>
+
 
                             {/* Material specs */}
                             {(item.materials || []).length > 0 && (
@@ -1344,13 +1409,18 @@ const QuoteModal = ({
                                 {item.materials.map((m, mIdx) => (
                                   <div
                                     key={mIdx}
-                                    className="grid grid-cols-[100px_1fr_22px] gap-2 items-center"
+                                    className="grid grid-cols-[100px_1fr] gap-2 items-center"
                                   >
                                     <input
                                       type="text"
                                       value={m.name}
                                       onChange={(e) =>
-                                        updateMaterial(idx, mIdx, "name", e.target.value)
+                                        updateMaterial(
+                                          idx,
+                                          mIdx,
+                                          "name",
+                                          e.target.value,
+                                        )
                                       }
                                       placeholder="Plywood"
                                       className="bg-white border border-bordergray text-[10px] text-darkgray rounded-md px-2 py-1.5 w-full focus:outline-none focus:border-gray-300 focus:ring-1 focus:ring-gray-300"
@@ -1359,19 +1429,16 @@ const QuoteModal = ({
                                       type="text"
                                       value={m.spec}
                                       onChange={(e) =>
-                                        updateMaterial(idx, mIdx, "spec", e.target.value)
+                                        updateMaterial(
+                                          idx,
+                                          mIdx,
+                                          "spec",
+                                          e.target.value,
+                                        )
                                       }
                                       placeholder="BWP 19mm"
                                       className="bg-white border border-bordergray text-[10px] text-darkgray rounded-md px-2 py-1.5 w-full focus:outline-none focus:border-gray-300 focus:ring-1 focus:ring-gray-300"
                                     />
-                                    <button
-                                      type="button"
-                                      onClick={() => removeMaterial(idx, mIdx)}
-                                      className="h-7 w-6 flex items-center justify-center rounded-md text-text-subtle hover:text-red-500 hover:bg-red-50 transition-colors"
-                                      title="Remove material"
-                                    >
-                                      <Trash2 size={11} />
-                                    </button>
                                   </div>
                                 ))}
                               </div>
@@ -1420,11 +1487,21 @@ const QuoteModal = ({
                       const categoryExclusions = {};
                       const addedInclusions = {};
                       const addedExclusions = {};
-                      const categoriesList = ["STATUATORY", "DELIVERY", "PAYMENTS", "TECHNICAL", "GENERAL"];
+                      const categoriesList = [
+                        "STATUATORY",
+                        "DELIVERY",
+                        "PAYMENTS",
+                        "TECHNICAL",
+                        "GENERAL",
+                      ];
                       categoriesList.forEach((cat) => {
                         const global = getGlobalTerms(cat);
-                        categoryInclusions[cat] = global.inclusions.filter((t) => t.isDefault).map((t) => t.text);
-                        categoryExclusions[cat] = global.exclusions.filter((t) => t.isDefault).map((t) => t.text);
+                        categoryInclusions[cat] = global.inclusions
+                          .filter((t) => t.isDefault)
+                          .map((t) => t.text);
+                        categoryExclusions[cat] = global.exclusions
+                          .filter((t) => t.isDefault)
+                          .map((t) => t.text);
                         addedInclusions[cat] = [];
                         addedExclusions[cat] = [];
                       });
@@ -1462,7 +1539,10 @@ const QuoteModal = ({
                   onClick={() => setTermsParentModalOpen(true)}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-select-blue bg-select-blue/5 text-select-blue text-[11.5px] font-bold hover:bg-select-blue/10 hover:shadow-sm transition-all cursor-pointer group"
                 >
-                  <Plus size={14} className="text-select-blue group-hover:scale-110 transition-transform" />
+                  <Plus
+                    size={14}
+                    className="text-select-blue group-hover:scale-110 transition-transform"
+                  />
                   <span>Add Conditions</span>
                 </button>
               </div>
@@ -1476,10 +1556,18 @@ const QuoteModal = ({
                 const isExpanded = !!expandedCategories[cat.id];
 
                 return (
-                  <div key={cat.id} className="border border-bordergray rounded-xl overflow-hidden bg-white shadow-xs">
+                  <div
+                    key={cat.id}
+                    className="border border-bordergray rounded-xl overflow-hidden bg-white shadow-xs"
+                  >
                     <button
                       type="button"
-                      onClick={() => setExpandedCategories((prev) => ({ ...prev, [cat.id]: !prev[cat.id] }))}
+                      onClick={() =>
+                        setExpandedCategories((prev) => ({
+                          ...prev,
+                          [cat.id]: !prev[cat.id],
+                        }))
+                      }
                       className="w-full flex items-center justify-between px-4 py-3 bg-bg-soft/40 hover:bg-bg-soft transition-all cursor-pointer"
                     >
                       <div className="flex items-center gap-2">
@@ -1493,13 +1581,19 @@ const QuoteModal = ({
                       </div>
                       <div className="text-text-muted">
                         {isExpanded ? (
-                          <ChevronDown size={14} className="text-textcolor/60" />
+                          <ChevronDown
+                            size={14}
+                            className="text-textcolor/60"
+                          />
                         ) : (
-                          <ChevronRight size={14} className="text-textcolor/60" />
+                          <ChevronRight
+                            size={14}
+                            className="text-textcolor/60"
+                          />
                         )}
                       </div>
                     </button>
-                    
+
                     {isExpanded && (
                       <div className="p-4 border-t border-bordergray/50 grid grid-cols-1 md:grid-cols-2 gap-5 bg-white">
                         {/* Included Column (always left) */}
@@ -1510,9 +1604,14 @@ const QuoteModal = ({
                           <div className="space-y-2">
                             {(() => {
                               const global = getGlobalTerms(cat.id);
-                              const defaultIn = global.inclusions.filter((t) => t.isDefault).map((t) => t.text);
-                              const addedIn = formData.addedInclusions?.[cat.id] || [];
-                              const visibleIn = Array.from(new Set([...defaultIn, ...addedIn]));
+                              const defaultIn = global.inclusions
+                                .filter((t) => t.isDefault)
+                                .map((t) => t.text);
+                              const addedIn =
+                                formData.addedInclusions?.[cat.id] || [];
+                              const visibleIn = Array.from(
+                                new Set([...defaultIn, ...addedIn]),
+                              );
 
                               if (visibleIn.length === 0) {
                                 return (
@@ -1524,7 +1623,10 @@ const QuoteModal = ({
 
                               return (
                                 <div
-                                  style={{ maxHeight: '152px', scrollBehavior: 'smooth' }}
+                                  style={{
+                                    maxHeight: "152px",
+                                    scrollBehavior: "smooth",
+                                  }}
                                   className="space-y-2 overflow-y-auto scroll-hidden-bar scroll-smooth"
                                 >
                                   {visibleIn.map((item, idx) => {
@@ -1532,7 +1634,9 @@ const QuoteModal = ({
                                     return (
                                       <div
                                         key={idx}
-                                        onClick={() => toggleInclusion(item, cat.id)}
+                                        onClick={() =>
+                                          toggleInclusion(item, cat.id)
+                                        }
                                         className="flex items-start gap-2.5 cursor-pointer group py-1 px-1.5 rounded hover:bg-bg-soft transition-all select-none text-left"
                                       >
                                         <div className="pt-0.5 shrink-0">
@@ -1553,7 +1657,7 @@ const QuoteModal = ({
                             })()}
                           </div>
                         </div>
-                        
+
                         {/* Not Included Column (always right) */}
                         <div>
                           <h4 className="text-[10px] font-bold text-red-500 tracking-wider uppercase mb-2">
@@ -1562,9 +1666,14 @@ const QuoteModal = ({
                           <div className="space-y-2">
                             {(() => {
                               const global = getGlobalTerms(cat.id);
-                              const defaultEx = global.exclusions.filter((t) => t.isDefault).map((t) => t.text);
-                              const addedEx = formData.addedExclusions?.[cat.id] || [];
-                              const visibleEx = Array.from(new Set([...defaultEx, ...addedEx]));
+                              const defaultEx = global.exclusions
+                                .filter((t) => t.isDefault)
+                                .map((t) => t.text);
+                              const addedEx =
+                                formData.addedExclusions?.[cat.id] || [];
+                              const visibleEx = Array.from(
+                                new Set([...defaultEx, ...addedEx]),
+                              );
 
                               if (visibleEx.length === 0) {
                                 return (
@@ -1576,7 +1685,10 @@ const QuoteModal = ({
 
                               return (
                                 <div
-                                  style={{ maxHeight: '152px', scrollBehavior: 'smooth' }}
+                                  style={{
+                                    maxHeight: "152px",
+                                    scrollBehavior: "smooth",
+                                  }}
                                   className="space-y-2 overflow-y-auto scroll-hidden-bar scroll-smooth"
                                 >
                                   {visibleEx.map((item, idx) => {
@@ -1584,7 +1696,9 @@ const QuoteModal = ({
                                     return (
                                       <div
                                         key={idx}
-                                        onClick={() => toggleExclusion(item, cat.id)}
+                                        onClick={() =>
+                                          toggleExclusion(item, cat.id)
+                                        }
                                         className="flex items-start gap-2.5 cursor-pointer group py-1 px-1.5 rounded hover:bg-bg-soft transition-all select-none text-left"
                                       >
                                         <div className="pt-0.5 shrink-0">
@@ -1630,7 +1744,7 @@ const QuoteModal = ({
         </div>
 
         {/* Preview pane */}
-        <div className="lg:sticky lg:top-0 lg:self-start">
+        <div className="lg:overflow-y-auto lg:h-full lg:min-h-0 scroll-hidden-bar">
           <p className="text-[10px] uppercase tracking-widest text-text-subtle font-bold mb-2 modal-no-print">
             Live Preview
           </p>
@@ -1655,8 +1769,12 @@ const QuoteModal = ({
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 bg-bg-soft border-b border-bordergray">
               <div>
-                <h3 className="text-[14px] font-bold text-textcolor">Add Conditions</h3>
-                <p className="text-[10px] text-text-muted mt-0.5">Select a category to customize Terms & Conditions</p>
+                <h3 className="text-[14px] font-bold text-textcolor">
+                  Add Conditions
+                </h3>
+                <p className="text-[10px] text-text-muted mt-0.5">
+                  Select a category to customize Terms & Conditions
+                </p>
               </div>
               <button
                 type="button"
@@ -1702,7 +1820,10 @@ const QuoteModal = ({
                           {count} selected
                         </span>
                       )}
-                      <ChevronRight size={14} className="text-text-muted group-hover:text-textcolor transition-colors" />
+                      <ChevronRight
+                        size={14}
+                        className="text-text-muted group-hover:text-textcolor transition-colors"
+                      />
                     </div>
                   </button>
                 );
@@ -1728,25 +1849,48 @@ const QuoteModal = ({
         <CategoryTermsModal
           category={activeCategoryModal}
           categoryLabel={
-            CATEGORIES_META.find((c) => c.id === activeCategoryModal)?.label || ""
+            CATEGORIES_META.find((c) => c.id === activeCategoryModal)?.label ||
+            ""
           }
-          initialInclusions={formData.categoryInclusions?.[activeCategoryModal] || []}
-          initialExclusions={formData.categoryExclusions?.[activeCategoryModal] || []}
-          addedInclusions={formData.addedInclusions?.[activeCategoryModal] || []}
-          addedExclusions={formData.addedExclusions?.[activeCategoryModal] || []}
+          initialInclusions={
+            formData.categoryInclusions?.[activeCategoryModal] || []
+          }
+          initialExclusions={
+            formData.categoryExclusions?.[activeCategoryModal] || []
+          }
+          addedInclusions={
+            formData.addedInclusions?.[activeCategoryModal] || []
+          }
+          addedExclusions={
+            formData.addedExclusions?.[activeCategoryModal] || []
+          }
           onApply={(newInclusions, newExclusions) => {
             const global = getGlobalTerms(activeCategoryModal);
-            const defaultInTexts = global.inclusions.filter((t) => t.isDefault).map((t) => t.text);
-            const defaultExTexts = global.exclusions.filter((t) => t.isDefault).map((t) => t.text);
+            const defaultInTexts = global.inclusions
+              .filter((t) => t.isDefault)
+              .map((t) => t.text);
+            const defaultExTexts = global.exclusions
+              .filter((t) => t.isDefault)
+              .map((t) => t.text);
 
-            const prevCatIn = formData.categoryInclusions?.[activeCategoryModal] || [];
-            const prevCatEx = formData.categoryExclusions?.[activeCategoryModal] || [];
+            const prevCatIn =
+              formData.categoryInclusions?.[activeCategoryModal] || [];
+            const prevCatEx =
+              formData.categoryExclusions?.[activeCategoryModal] || [];
 
-            const currentSelectedDefaultsIn = prevCatIn.filter((t) => defaultInTexts.includes(t));
-            const currentSelectedDefaultsEx = prevCatEx.filter((t) => defaultExTexts.includes(t));
+            const currentSelectedDefaultsIn = prevCatIn.filter((t) =>
+              defaultInTexts.includes(t),
+            );
+            const currentSelectedDefaultsEx = prevCatEx.filter((t) =>
+              defaultExTexts.includes(t),
+            );
 
-            const updatedCatIn = Array.from(new Set([...currentSelectedDefaultsIn, ...newInclusions]));
-            const updatedCatEx = Array.from(new Set([...currentSelectedDefaultsEx, ...newExclusions]));
+            const updatedCatIn = Array.from(
+              new Set([...currentSelectedDefaultsIn, ...newInclusions]),
+            );
+            const updatedCatEx = Array.from(
+              new Set([...currentSelectedDefaultsEx, ...newExclusions]),
+            );
 
             const updatedAddedIn = newInclusions;
             const updatedAddedEx = newExclusions;
@@ -1754,7 +1898,13 @@ const QuoteModal = ({
             // Reconstruct flat arrays
             const flatIn = [];
             const flatEx = [];
-            const categoriesList = ["STATUATORY", "DELIVERY", "PAYMENTS", "TECHNICAL", "GENERAL"];
+            const categoriesList = [
+              "STATUATORY",
+              "DELIVERY",
+              "PAYMENTS",
+              "TECHNICAL",
+              "GENERAL",
+            ];
             categoriesList.forEach((cat) => {
               if (cat === activeCategoryModal) {
                 flatIn.push(...updatedCatIn);

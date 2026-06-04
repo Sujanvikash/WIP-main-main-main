@@ -584,8 +584,9 @@ const LeadEdit = () => {
   const hasProposalBeenSent =
     documents.length > 0 ||
     ["proposal", "negotiation", "won"].includes(lead?.status?.toLowerCase());
-  const showSampleQuoteButton =
-    ["inquiry", "qualified"].includes(lead?.status?.toLowerCase());
+  const showSampleQuoteButton = ["inquiry", "qualified"].includes(
+    lead?.status?.toLowerCase(),
+  );
 
   return (
     <div className="bg-overallbg p-6 font-sans h-full overflow-y-scroll">
@@ -667,7 +668,9 @@ const LeadEdit = () => {
                 if (!clientID && clientsStr) {
                   try {
                     const clients = JSON.parse(clientsStr);
-                    const found = clients.find((c) => c.sourceLeadId === lead.proposalId);
+                    const found = clients.find(
+                      (c) => c.sourceLeadId === lead.proposalId,
+                    );
                     if (found) clientID = found.clientID;
                   } catch (e) {
                     console.error(e);
@@ -783,9 +786,13 @@ const LeadEdit = () => {
                       const secondary = parts.slice(1).join(",").trim() || "";
                       return (
                         <>
-                          <span className="text-gray-900 font-semibold leading-normal">{primary}</span>
+                          <span className="text-gray-900 font-semibold leading-normal">
+                            {primary}
+                          </span>
                           {secondary && (
-                            <span className="text-select-blue text-sm leading-tight mt-0.5">{secondary}</span>
+                            <span className="text-select-blue text-sm leading-tight mt-0.5">
+                              {secondary}
+                            </span>
                           )}
                         </>
                       );
@@ -1222,7 +1229,9 @@ const LeadEdit = () => {
             };
             const saved = localStorage.getItem("newLeadsData");
             const newLeads = saved ? JSON.parse(saved) : [];
-            const filtered = newLeads.filter((l) => l.proposalId !== lead.proposalId);
+            const filtered = newLeads.filter(
+              (l) => l.proposalId !== lead.proposalId,
+            );
             localStorage.setItem(
               "newLeadsData",
               JSON.stringify([updatedLead, ...filtered]),
@@ -1248,7 +1257,7 @@ const LeadEdit = () => {
                 body,
                 quoteId,
                 total,
-                attachments: [{ name: "Quotation.pdf", size: 154000 }]
+                attachments: [{ name: "Quotation.pdf", size: 154000 }],
               }),
             );
             window.dispatchEvent(new Event("leadDataChanged"));
